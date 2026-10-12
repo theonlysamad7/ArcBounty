@@ -1,0 +1,50 @@
+[
+  {
+    "id": "1791449413600",
+    "bountyId": "bounty-1791449197434",
+    "bountyTitle": "arc bounty",
+    "title": "arc bounty ptoduct",
+    "description": "did what I was asked to do",
+    "proof": "https://github.com",
+    "reward": "1000 USDC",
+    "status": "Approved",
+    "submittedAt": "2026-10-08T08:50:13.601Z",
+    "reviewedAt": "2026-10-08T08:52:43.345Z"
+  },
+  {
+    "id": "1791334627378",
+    "bountyId": "bounty-1791334349745",
+    "bountyTitle": "test the bounty",
+    "title": "test the bounty",
+    "description": "do what I asked you to do",
+    "proof": "https://github.com",
+    "reward": "2 USDC",
+    "status": "Approved",
+    "submittedAt": "2026-10-07T00:57:07.379Z",
+    "reviewedAt": "2026-10-07T18:47:57.394Z"
+  },
+  {
+    "id": "1791306555997",
+    "bountyId": "documentation-bug",
+    "bountyTitle": "Find a bug in our documentation",
+    "title": "Arc ecosystem research",
+    "description": "I researched five projects building on Arc and documented their bugs",
+    "proof": "https://github.com",
+    "reward": "5 USDC",
+    "status": "Rejected",
+    "submittedAt": "2026-10-06T17:09:15.998Z",
+    "reviewedAt": "2026-10-08T08:53:55.116Z"
+  },
+  {
+    "id": "1791306399159",
+    "bountyId": "research-arc-ecosystem",
+    "bountyTitle": "Research Arc Ecosystem Projects",
+    "title": "Arc ecosystem research",
+    "description": "I researched five projects building on Arc and documented their repositories and teams.",
+    "proof": "https://github.com",
+    "reward": "2 USDC",
+    "status": "Approved",
+    "submittedAt": "2026-10-06T17:06:39.160Z",
+    "reviewedAt": "2026-10-07T18:51:59.150Z"
+  }
+]
