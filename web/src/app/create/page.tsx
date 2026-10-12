@@ -316,9 +316,45 @@ export default function CreateBountyPage() {
 
       const bountyId = createdEvent.args.bountyId.toString();
 
+      setStatusMessage("Verifying transaction and saving bounty to the marketplace…");
+
+      const syncResponse = await fetch("/api/bounties/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          creationHash,
+          bountyId,
+          creator: address,
+          title: title.trim(),
+          category,
+          rewardAmount,
+          deadline,
+          deadlineSeconds,
+          description: description.trim(),
+          descriptionOnChain,
+          requirements: requirements.trim(),
+          winnerCount,
+          distribution,
+          percentages:
+            distribution === "custom" ? percentages : [],
+        }),
+      });
+
+      const syncResult = await syncResponse.json().catch(() => ({}));
+
       setCreatedBountyId(bountyId);
+
+      if (!syncResponse.ok) {
+        setStatusMessage(
+          `Your bounty was created on Arc, but saving it to the marketplace failed: ${syncResult.error || "Unknown database error"}. Transaction: https://explorer.arc.io/tx/${creationHash}`
+        );
+        return;
+      }
+
       setStatusMessage(
-        "Your bounty has been created and its USDC reward is escrowed."
+        "Your bounty has been created on Arc Mainnet and saved to the marketplace."
       );
     } catch (error) {
       console.error("Bounty creation failed:", error);

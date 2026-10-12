@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import fs from "fs/promises";
-import path from "path";
+import { supabaseAdmin } from "../../../lib/supabase-admin";
 
-const filePath = path.join(process.cwd(), "data", "bounties.json");
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
@@ -10,44 +9,74 @@ export async function POST(request: Request) {
 
     const title = String(formData.get("title") || "").trim();
     const category = String(formData.get("category") || "").trim();
-    const reward = String(formData.get("reward") || "").trim();
+    const rawReward = String(formData.get("reward") || "").trim();
     const deadline = String(formData.get("deadline") || "").trim();
     const description = String(formData.get("description") || "").trim();
     const requirements = String(formData.get("requirements") || "").trim();
+
     const winnerCount = Number(formData.get("winnerCount") || 1);
     const distribution = String(formData.get("distribution") || "equal");
+
     let percentages: number[] = [];
 
     try {
       percentages = JSON.parse(String(formData.get("percentages") || "[]"));
     } catch {
-      return NextResponse.json({ error: "Invalid payout percentages." }, { status: 400 });
-    }
-
-    if (!title || !category || !reward || !deadline || !description) {
       return NextResponse.json(
-        { error: "Please complete all required fields." },
+        { error: "Invalid payout percentages." },
         { status: 400 }
       );
     }
 
-    if (!Number.isInteger(winnerCount) || winnerCount < 1 || winnerCount > 100) {
-      return NextResponse.json({ error: "Winner count must be between 1 and 100." }, { status: 400 });
+    const rewardNumber = Number(rawReward);
+
+    if (
+      !title ||
+      !category ||
+      !rawReward ||
+      !Number.isFinite(rewardNumber) ||
+      rewardNumber <= 0 ||
+      !deadline ||
+      !description
+    ) {
+      return NextResponse.json(
+        { error: "Please provide valid values for all required fields." },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !Number.isInteger(winnerCount) ||
+      winnerCount < 1 ||
+      winnerCount > 100
+    ) {
+      return NextResponse.json(
+        { error: "Winner count must be between 1 and 100." },
+        { status: 400 }
+      );
     }
 
     if (distribution !== "equal" && distribution !== "custom") {
-      return NextResponse.json({ error: "Invalid reward distribution." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid reward distribution." },
+        { status: 400 }
+      );
     }
 
     if (distribution === "custom") {
       if (
         percentages.length !== winnerCount ||
-        percentages.some((value) => !Number.isInteger(value) || value < 0 || value > 100) ||
-        percentages.reduce((sum, value) => sum + value, 0) !== 100 ||
-        percentages.some((value) => value === 0)
+        percentages.some(
+          (value) =>
+            !Number.isInteger(value) || value <= 0 || value > 100
+        ) ||
+        percentages.reduce((sum, value) => sum + value, 0) !== 100
       ) {
         return NextResponse.json(
-          { error: "Custom percentages must be positive whole numbers adding up to 100%." },
+          {
+            error:
+              "Custom percentages must be positive whole numbers adding up to 100%.",
+          },
           { status: 400 }
         );
       }
@@ -55,43 +84,35 @@ export async function POST(request: Request) {
       percentages = [];
     }
 
-    let bounties = [];
-
-    try {
-      const existing = await fs.readFile(filePath, "utf8");
-      bounties = JSON.parse(existing);
-    } catch {
-      bounties = [];
-    }
-
     const bounty = {
-      id: `bounty-${Date.now()}`,
+      id: `bounty-${crypto.randomUUID()}`,
       category,
       tag: "Open",
       title,
       description,
-      reward: `${reward} USDC`,
+      reward: `${rawReward} USDC`,
       winners: winnerCount,
       distribution,
       percentages,
-      time: deadline,
+      time_label: deadline,
       deadline,
       submissions: "0 submissions",
-      creator: "0xYou...0000",
+      creator: "ArcBounty",
       requirements,
       status: "Open",
-      createdAt: new Date().toISOString(),
     };
 
-    bounties.unshift(bounty);
+    const { error } = await supabaseAdmin
+      .from("bounties")
+      .insert(bounty);
 
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-
-    await fs.writeFile(
-      filePath,
-      JSON.stringify(bounties, null, 2),
-      "utf8"
-    );
+    if (error) {
+      console.error("Supabase bounty insert failed:", error.message);
+      return NextResponse.json(
+        { error: "Unable to save bounty." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.redirect(new URL("/", request.url), 303);
   } catch (error) {

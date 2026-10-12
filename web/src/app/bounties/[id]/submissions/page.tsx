@@ -1,8 +1,8 @@
 import Link from "next/link";
-import fs from "fs/promises";
-import path from "path";
 import { notFound } from "next/navigation";
 import { getBountyById } from "../../../../data/bounties-server";
+import { supabaseAdmin } from "../../../../lib/supabase-admin";
+import ReviewSubmissionButtons from "./ReviewSubmissionButtons";
 
 type Submission = {
   id: string;
@@ -15,17 +15,47 @@ type Submission = {
   status: string;
   submittedAt: string;
   reviewedAt?: string;
+  onchainSubmissionId?: string;
+  walletAddress?: string;
+  submissionTxHash?: string;
 };
 
 async function getSubmissions(): Promise<Submission[]> {
-  const filePath = path.join(process.cwd(), "data", "submissions.json");
+  const { data, error } = await supabaseAdmin
+    .from("submissions")
+    .select("*")
+    .order("submitted_at", { ascending: false });
 
-  try {
-    const file = await fs.readFile(filePath, "utf8");
-    return JSON.parse(file);
-  } catch {
-    return [];
+  if (error) {
+    console.error("Unable to load submissions:", error.message);
+    throw new Error("Unable to load submissions.");
   }
+
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    bountyId: String(row.bounty_id),
+    bountyTitle: String(row.bounty_title),
+    title: String(row.title),
+    description: String(row.description),
+    proof: String(row.proof),
+    reward: String(row.reward ?? ""),
+    status: String(row.status ?? "Pending Review"),
+    submittedAt: String(row.submitted_at),
+    reviewedAt: row.reviewed_at
+      ? String(row.reviewed_at)
+      : undefined,
+    onchainSubmissionId:
+      row.onchain_submission_id === null ||
+      row.onchain_submission_id === undefined
+        ? undefined
+        : String(row.onchain_submission_id),
+    walletAddress: row.wallet_address
+      ? String(row.wallet_address)
+      : undefined,
+    submissionTxHash: row.submission_tx_hash
+      ? String(row.submission_tx_hash)
+      : undefined,
+  }));
 }
 
 export default async function BountySubmissionsPage({
@@ -34,15 +64,12 @@ export default async function BountySubmissionsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-
   const bounty = await getBountyById(id);
 
-  if (!bounty) {
-    notFound();
-  }
+  if (!bounty) notFound();
 
   const submissions = (await getSubmissions()).filter(
-    (submission) => submission.bountyId === bounty.id
+    (submission) => submission.bountyId === String(bounty.id)
   );
 
   const pending = submissions.filter(
@@ -72,85 +99,59 @@ export default async function BountySubmissionsPage({
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                d="M19 12H5"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M11 6l-6 6 6 6"
+                d="M19 12H5m6-6-6 6 6 6"
               />
             </svg>
           </Link>
 
-          <div className="text-xl font-bold tracking-tight text-slate-900">
+          <div className="text-xl font-bold tracking-tight">
             Arc<span className="text-[#1747c8]">Bounty</span>
           </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-        <div className="mb-6">
+        <div className="mb-6 mt-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#1747c8]">
+              Creator review
+            </p>
 
-          <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[#1747c8]">
-                Creator review
-              </p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+              {bounty.title}
+            </h1>
 
-              <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-                {bounty.title}
-              </h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Review submitted work and manage rewards secured in the bounty
+              escrow.
+            </p>
+          </div>
 
-              <p className="mt-2 text-sm text-slate-500">
-                Review the work submitted for this bounty before releasing the
-                reward.
-              </p>
+          <div className="flex gap-2">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-center shadow-sm">
+              <p className="text-lg font-bold">{submissions.length}</p>
+              <p className="text-xs text-slate-500">Total</p>
             </div>
 
-            <div className="flex gap-2">
-              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-center shadow-sm">
-                <p className="text-lg font-bold">{submissions.length}</p>
-                <p className="text-xs text-slate-500">Total</p>
-              </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+              <p className="text-lg font-bold text-amber-700">{pending}</p>
+              <p className="text-xs text-amber-700">Pending</p>
+            </div>
 
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
-                <p className="text-lg font-bold text-amber-700">{pending}</p>
-                <p className="text-xs text-amber-700">Pending</p>
-              </div>
-
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center">
-                <p className="text-lg font-bold text-emerald-700">
-                  {approved}
-                </p>
-                <p className="text-xs text-emerald-700">Approved</p>
-              </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center">
+              <p className="text-lg font-bold text-emerald-700">
+                {approved}
+              </p>
+              <p className="text-xs text-emerald-700">Approved</p>
             </div>
           </div>
         </div>
 
         {submissions.length === 0 ? (
           <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 12h6m-6 4h6M7 4h7l3 3v13H7z"
-                />
-              </svg>
-            </div>
-
-            <h2 className="mt-4 text-lg font-bold">No submissions yet</h2>
-
+            <h2 className="text-lg font-bold">No submissions yet</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-              When contributors submit work for this bounty, their
-              submissions will appear here for review.
+              Contributor submissions for this bounty will appear here.
             </p>
           </section>
         ) : (
@@ -176,27 +177,31 @@ export default async function BountySubmissionsPage({
                       </span>
 
                       <span className="text-xs text-slate-400">
-                        {new Date(
-                          submission.submittedAt
-                        ).toLocaleString()}
+                        {new Date(submission.submittedAt).toLocaleString()}
                       </span>
                     </div>
 
                     <h2 className="mt-3 text-lg font-bold">
                       {submission.title}
                     </h2>
+
+                    {submission.walletAddress && (
+                      <p className="mt-2 break-all text-xs text-slate-500">
+                        Contributor: {submission.walletAddress}
+                      </p>
+                    )}
                   </div>
 
-                  <div className="shrink-0 rounded-xl bg-slate-50 px-4 py-3 text-right">
+                  <div className="shrink-0 rounded-xl bg-slate-50 px-4 py-3 sm:text-right">
                     <p className="text-xs text-slate-500">Reward</p>
                     <p className="mt-0.5 font-bold text-slate-900">
-                      {submission.reward}
+                      {submission.reward || "See payout tiers"}
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                  <p className="text-sm leading-6 text-slate-600">
+                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
                     {submission.description}
                   </p>
                 </div>
@@ -216,47 +221,26 @@ export default async function BountySubmissionsPage({
                   </a>
                 </div>
 
+                {submission.submissionTxHash && (
+                  <a
+                    href={`https://explorer.arc.io/tx/${submission.submissionTxHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-block text-xs font-semibold text-[#1747c8] hover:underline"
+                  >
+                    View submission transaction on Arc Explorer
+                  </a>
+                )}
+
                 {submission.status === "Pending Review" && (
-                  <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-                    <form action="/api/submissions/review" method="POST">
-                      <input
-                        type="hidden"
-                        name="submissionId"
-                        value={submission.id}
-                      />
-                      <input
-                        type="hidden"
-                        name="action"
-                        value="reject"
-                      />
-
-                      <button
-                        type="submit"
-                        className="w-full rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 sm:w-auto"
-                      >
-                        Reject
-                      </button>
-                    </form>
-
-                    <form action="/api/submissions/review" method="POST">
-                      <input
-                        type="hidden"
-                        name="submissionId"
-                        value={submission.id}
-                      />
-                      <input
-                        type="hidden"
-                        name="action"
-                        value="approve"
-                      />
-
-                      <button
-                        type="submit"
-                        className="w-full rounded-xl bg-[#1747c8] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#123aa5] sm:w-auto"
-                      >
-                        Approve Submission
-                      </button>
-                    </form>
+                  <div className="mt-5 border-t border-slate-100 pt-5">
+                    <ReviewSubmissionButtons
+                      bountyId={submission.bountyId}
+                      submissionId={submission.id}
+                      onchainSubmissionId={
+                        submission.onchainSubmissionId ?? ""
+                      }
+                    />
                   </div>
                 )}
               </article>

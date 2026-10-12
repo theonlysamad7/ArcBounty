@@ -268,10 +268,58 @@ export default function SubmitBountyPage() {
       setTxHash(hash);
       setMessage("Transaction sent. Waiting for Arc Mainnet confirmation…");
 
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+      if (receipt.status !== "success") {
+        throw new Error("The transaction reverted on Arc Mainnet.");
+      }
 
       setAlreadySubmitted(true);
-      setMessage("Your work has been submitted successfully on Arc Mainnet.");
+      setMessage("Transaction confirmed. Saving your submission to the marketplace…");
+
+      let syncResponse;
+      let syncData: { error?: string } = {};
+
+      try {
+        syncResponse = await fetch("/api/submissions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bountyId: bountyId.toString(),
+            walletAddress: address,
+            transactionHash: hash,
+            title: title.trim(),
+            description: description.trim(),
+            proof: proofUrl.toString(),
+          }),
+        });
+
+        syncData = await syncResponse.json().catch(() => ({}));
+      } catch {
+        setMessage(
+          "Your work is confirmed on Arc Mainnet, but marketplace syncing failed. Your on-chain submission remains recorded. Transaction: " + hash
+        );
+        setTitle("");
+        setDescription("");
+        setProof("");
+        return;
+      }
+
+      if (!syncResponse.ok) {
+        setMessage(
+          "Your work is confirmed on Arc Mainnet, but marketplace syncing failed: " +
+          (syncData.error || "Please contact the bounty creator with your transaction hash.") +
+          " Transaction: " + hash
+        );
+        setTitle("");
+        setDescription("");
+        setProof("");
+        return;
+      }
+
+      setMessage("Your work has been submitted on Arc Mainnet and saved to the marketplace.");
       setTitle("");
       setDescription("");
       setProof("");
