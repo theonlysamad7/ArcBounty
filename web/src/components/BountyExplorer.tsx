@@ -25,6 +25,13 @@ const categories = [
   "Bug Hunt",
 ];
 
+function displayCreator(creator: string) {
+  if (/^0x[a-fA-F0-9]{40}$/.test(creator)) {
+    return `${creator.slice(0, 6)}...${creator.slice(-4)}`;
+  }
+  return creator;
+}
+
 function ArrowRight() {
   return <span aria-hidden="true">→</span>;
 }
@@ -215,7 +222,7 @@ export default function BountyExplorer({
                     Creator
                   </p>
                   <p className="mt-1 text-sm font-semibold text-slate-700">
-                    {bounty.creator}
+                    {displayCreator(bounty.creator)}
                   </p>
                 </div>
               </div>

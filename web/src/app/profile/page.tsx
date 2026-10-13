@@ -77,7 +77,7 @@ function statusStyle(status: SubmissionItem["status"]) {
 }
 
 export default function ProfilePage() {
-  const { address, isConnected, chainId } = useAccount();
+  const { address, isConnected } = useAccount();
 
   const [bounties, setBounties] = useState<BountyItem[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
@@ -96,218 +96,108 @@ export default function ProfilePage() {
       return;
     }
 
-    if (chainId !== 5042) {
-      setBounties([]);
-      setSubmissions([]);
-      setTotalRewards(BigInt(0));
-      setError("Switch your wallet to Arc Mainnet to view your profile.");
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError("");
 
     try {
-      const account = address.toLowerCase();
+      const response = await fetch(
+        `/api/profile?wallet=${encodeURIComponent(address)}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) throw new Error("Profile request failed.");
+      const data = await response.json();
 
-      const nextId = await client.readContract({
-        address: bountyAddress,
-        abi: arcBountyAbiConfig,
-        functionName: "nextBountyId",
-      }) as bigint;
-
-      const myBounties: BountyItem[] = [];
-      const mySubmissions: SubmissionItem[] = [];
-      const approvedKeys = new Set<string>();
-      const rejectedKeys = new Set<string>();
-
-      const latestBlock = await client.getBlockNumber();
-      const chunkSize = BigInt(1000);
-
-      async function getLogsInChunks(event: typeof winnerPaidEvent | typeof approvedEvent | typeof rejectedEvent) {
-        const logs = [];
-        let fromBlock = BigInt(0);
-
-        while (fromBlock <= latestBlock) {
-          const toBlock =
-            fromBlock + chunkSize - BigInt(1) > latestBlock
-              ? latestBlock
-              : fromBlock + chunkSize - BigInt(1);
-
-          const chunkLogs = await client.getLogs({
-            address: bountyAddress,
-            event,
-            fromBlock,
-            toBlock,
-          });
-
-          logs.push(...chunkLogs);
-          fromBlock = toBlock + BigInt(1);
-        }
-
-        return logs;
+      function parseReward(value: unknown): bigint {
+        const match = String(value ?? "").match(new RegExp("[0-9]+(?:[.][0-9]+)?"));
+        if (!match) return BigInt(0);
+        const amount = Number(match[0]);
+        if (!Number.isFinite(amount) || amount < 0) return BigInt(0);
+        return BigInt(Math.round(amount * 1000000));
       }
 
-      const [paidLogs, approvedLogs, rejectedLogs] = await Promise.all([
-        getLogsInChunks(winnerPaidEvent),
-        getLogsInChunks(approvedEvent),
-        getLogsInChunks(rejectedEvent),
-      ]);
-
-      let earnings = BigInt(0);
-
-      for (const log of paidLogs) {
-        if (log.args.contributor?.toLowerCase() === account) {
-          earnings += ("amount" in log.args ? log.args.amount : undefined) ?? BigInt(0);
-        }
+      function mapStatus(value: unknown): number {
+        const valueText = String(value ?? "Open").toLowerCase();
+        if (valueText.includes("complete") || valueText.includes("resolved")) return 1;
+        if (valueText.includes("cancel")) return 2;
+        return 0;
       }
 
-      for (const log of approvedLogs) {
-        if (log.args.bountyId !== undefined &&
-            log.args.submissionId !== undefined) {
-          approvedKeys.add(
-            `${log.args.bountyId}:${log.args.submissionId}`
-          );
-        }
-      }
-
-      for (const log of rejectedLogs) {
-        if (log.args.bountyId !== undefined &&
-            log.args.submissionId !== undefined) {
-          rejectedKeys.add(
-            `${log.args.bountyId}:${log.args.submissionId}`
-          );
-        }
-      }
-
-      const bountyIds: bigint[] = [];
-      for (let id = BigInt(0); id < nextId; id++) bountyIds.push(id);
-
-      const bountyResults = await Promise.all(
-        bountyIds.map(async (id) => {
-          try {
-            const bounty = await client.readContract({
-              address: bountyAddress,
-              abi: arcBountyAbiConfig,
-              functionName: "bounties",
-              args: [id],
-            }) as readonly [
-              bigint, Address, bigint, bigint, number, string, string
-            ];
-
-            const [
-              storedId,
-              creator,
-              reward,
-              deadline,
-              status,
-              title,
-              description,
-            ] = bounty;
-
-            if (
-              !creator ||
-              creator === "0x0000000000000000000000000000000000000000"
-            ) return null;
-
-            const [remaining, allSubmissions] = await Promise.all([
-              client.readContract({
-                address: bountyAddress,
-                abi: arcBountyAbiConfig,
-                functionName: "remainingReward",
-                args: [id],
-              }) as Promise<bigint>,
-              client.readContract({
-                address: bountyAddress,
-                abi: arcBountyAbiConfig,
-                functionName: "getSubmissions",
-                args: [id],
-              }) as Promise<readonly {
-                id: bigint;
-                contributor: Address;
-                proof: string;
-                resolved: boolean;
-              }[]>,
-            ]);
-
-            if (creator.toLowerCase() === account) {
-              myBounties.push({
-                id: storedId.toString(),
-                title,
-                description,
-                creator,
-                reward,
-                remainingReward: remaining,
-                deadline,
-                status: Number(status),
-                submissions: allSubmissions.length,
-              });
-            }
-
-            for (const item of allSubmissions) {
-              if (item.contributor.toLowerCase() !== account) continue;
-
-              const key = `${storedId}:${item.id}`;
-              let itemStatus: SubmissionItem["status"] = "Pending Review";
-
-              if (approvedKeys.has(key)) itemStatus = "Approved";
-              else if (rejectedKeys.has(key)) itemStatus = "Rejected";
-              else if (item.resolved) itemStatus = "Resolved";
-
-              let rewardAmount = BigInt(0);
-
-              if (itemStatus === "Approved") {
-                for (const log of paidLogs) {
-                  if (
-                    log.args.bountyId === storedId &&
-                    log.args.submissionId === item.id &&
-                    log.args.contributor?.toLowerCase() === account
-                  ) {
-                    rewardAmount += ("amount" in log.args ? log.args.amount : undefined) ?? BigInt(0);
-                  }
-                }
-              }
-
-              mySubmissions.push({
-                id: item.id.toString(),
-                bountyId: storedId.toString(),
-                bountyTitle: title,
-                proof: item.proof,
-                resolved: item.resolved,
-                status: itemStatus,
-                reward: rewardAmount,
-              });
-            }
-
-            return true;
-          } catch {
-            return null;
-          }
+      const mappedBounties: BountyItem[] = (data.bounties ?? []).map(
+        (item: Record<string, unknown>) => ({
+          id: String(item.id ?? ""),
+          title: String(item.title ?? "Untitled bounty"),
+          description: String(item.description ?? ""),
+          creator: String(item.creator ?? address) as Address,
+          reward: parseReward(item.reward),
+          remainingReward: BigInt(0),
+          deadline: BigInt(0),
+          status: mapStatus(item.status ?? item.tag),
+          submissions: Number(data.bountySubmissionCounts?.[String(item.id)] ?? 0),
         })
       );
 
-      void bountyResults;
-
-      myBounties.sort((a, b) => Number(b.id) - Number(a.id));
-      mySubmissions.sort(
-        (a, b) =>
-          Number(b.bountyId) - Number(a.bountyId) ||
-          Number(b.id) - Number(a.id)
+      const mappedSubmissions: SubmissionItem[] = (data.submissions ?? []).map(
+        (item: Record<string, unknown>) => {
+          const rawStatus = String(item.status ?? "Pending Review").toLowerCase();
+          let status: SubmissionItem["status"] = "Pending Review";
+          if (rawStatus.includes("reject")) status = "Rejected";
+          else if (rawStatus.includes("resolv")) status = "Resolved";
+          else if (rawStatus.includes("approv")) status = "Approved";
+          return {
+            id: String(item.onchain_submission_id ?? item.id ?? ""),
+            bountyId: String(item.bounty_id ?? ""),
+            bountyTitle: String(item.bounty_title ?? item.title ?? "Untitled bounty"),
+            proof: String(item.proof ?? ""),
+            resolved: status !== "Pending Review",
+            status,
+            reward: BigInt(0),
+          };
+        }
       );
 
-      setBounties(myBounties);
-      setSubmissions(mySubmissions);
-      setTotalRewards(earnings);
+      setBounties(mappedBounties);
+      setSubmissions(mappedSubmissions);
+
+      // Count earnings only from confirmed WinnerPaid events.
+      try {
+        const account = address.toLowerCase();
+        const latestBlock = await client.getBlockNumber();
+        const chunkSize = BigInt(1000);
+        let fromBlock = BigInt(0);
+        let earnings = BigInt(0);
+
+        while (fromBlock <= latestBlock) {
+          const candidate = fromBlock + chunkSize - BigInt(1);
+          const toBlock = candidate > latestBlock ? latestBlock : candidate;
+          const logs = await client.getLogs({
+            address: bountyAddress,
+            event: winnerPaidEvent,
+            fromBlock,
+            toBlock,
+          });
+          for (const log of logs) {
+            if (log.args.contributor?.toLowerCase() === account) {
+              earnings += log.args.amount ?? BigInt(0);
+            }
+          }
+          fromBlock = toBlock + BigInt(1);
+        }
+        setTotalRewards(earnings);
+      } catch (payoutError) {
+        console.error("Payout verification failed:", payoutError);
+        setTotalRewards(BigInt(0));
+        setError("Profile loaded, but payout totals could not be verified. Please refresh to retry.");
+      }
     } catch (err) {
-      console.error("Failed to load ArcBounty profile:", err);
-      setError(
-        "We couldn't load your on-chain profile. Please refresh and try again."
-      );
+      console.error("Failed to load profile:", err);
+      setBounties([]);
+      setSubmissions([]);
+      setTotalRewards(BigInt(0));
+      setError("We could not load your profile. Please refresh and try again.");
     } finally {
       setLoading(false);
     }
-  }, [address, isConnected, chainId]);
+  }, [address, isConnected]);
 
   useEffect(() => {
     void loadProfile();
@@ -374,11 +264,7 @@ export default function ProfilePage() {
                   ? `Connected: ${shortAddress(address)}`
                   : "Connect your wallet to view your own bounties, submissions, and rewards."}
               </p>
-              {isConnected && chainId !== 5042 && (
-                <p className="mt-2 text-sm font-medium text-red-600">
-                  Switch to Arc Mainnet to view your profile.
-                </p>
-              )}
+
             </div>
             <WalletButton />
           </div>
@@ -424,7 +310,7 @@ export default function ProfilePage() {
 
             {loading && (
               <p className="mt-5 text-sm text-slate-500">
-                Loading your on-chain activity…
+                Loading your profile and verifying payouts on Arc Mainnet…
               </p>
             )}
 
@@ -468,7 +354,7 @@ export default function ProfilePage() {
                           </span>
                         </div>
                         <p className="mt-2 text-xs text-slate-500">
-                          Remaining escrow: {formatUsdc(bounty.remainingReward)} USDC
+                          Escrow remains governed by the Arc Mainnet contract.
                         </p>
                         <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
                           <Link href={`/bounties/${bounty.id}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100">
@@ -522,11 +408,7 @@ export default function ProfilePage() {
                             View submitted proof
                           </a>
                         )}
-                        {submission.reward > BigInt(0) && (
-                          <p className="mt-2 text-xs font-semibold text-emerald-700">
-                            Paid: {formatUsdc(submission.reward)} USDC
-                          </p>
-                        )}
+
                         <div className="mt-3">
                           <Link href={`/bounties/${submission.bountyId}`} className="text-xs font-semibold text-[#1747c8]">
                             View bounty →
@@ -542,7 +424,7 @@ export default function ProfilePage() {
             <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
               <h2 className="text-lg font-bold">Recent Activity</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Your latest submissions recorded on Arc.
+                Your latest submission activity from the marketplace.
               </p>
               <div className="mt-6 space-y-4">
                 {submissions.slice(0, 3).map((submission) => (
