@@ -38,12 +38,12 @@ export const wagmiConfig = createConfig({
       metadata: {
         name: "ArcBounty",
         description: "Discover and complete bounties on Arc",
-        url: "http://localhost:3000",
+        url: "https://arc-bounty.vercel.app",
         icons: [],
       },
     }),
   ],
   transports: {
-    [arc.id]: http(),
+    [arc.id]: http("https://rpc.mainnet.arc.io"),
   },
 });

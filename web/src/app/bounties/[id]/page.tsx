@@ -1,8 +1,10 @@
 import Link from "next/link";
 import DeadlineCountdown from "../../../components/DeadlineCountdown";
 import { notFound } from "next/navigation";
-import { getOnChainBounties } from "../../../data/bounties-chain";
+import { getBountyById } from "../../../data/bounties-server";
 import BountyActions from "../../../components/BountyActions";
+
+export const dynamic = "force-dynamic";
 
 export default async function BountyDetailPage({
   params,
@@ -11,19 +13,30 @@ export default async function BountyDetailPage({
 }) {
   const { id } = await params;
 
-  // The marketplace uses numeric IDs assigned by the ArcBounty contract.
   if (!/^\d+$/.test(id)) {
     notFound();
   }
 
-  const bounties = await getOnChainBounties();
-  const bounty = bounties.find((item) => item.id === id);
+  const bounty = await getBountyById(id);
 
   if (!bounty) {
     notFound();
   }
 
-  const deadlinePassed = new Date(bounty.deadline).getTime() <= Date.now();
+  const creatorAddress =
+    /^0x[a-fA-F0-9]{40}$/.test(bounty.creator)
+      ? bounty.creator
+      : "";
+
+  const deadlineValue = bounty.deadline || bounty.time;
+  const deadlineDate = new Date(deadlineValue);
+  const deadlinePassed =
+    !Number.isNaN(deadlineDate.getTime()) &&
+    deadlineDate.getTime() <= Date.now();
+
+  const deadlineIso = Number.isNaN(deadlineDate.getTime())
+    ? ""
+    : deadlineDate.toISOString();
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -58,7 +71,7 @@ export default async function BountyDetailPage({
               </span>
 
               <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                On-chain bounty
+                Arc Mainnet bounty
               </span>
 
               <span
@@ -68,7 +81,7 @@ export default async function BountyDetailPage({
                     : "bg-emerald-50 text-emerald-700"
                 }`}
               >
-                {deadlinePassed ? "Deadline passed" : "Active"}
+                {deadlinePassed ? "Deadline passed" : bounty.status ?? "Open"}
               </span>
             </div>
 
@@ -80,13 +93,30 @@ export default async function BountyDetailPage({
               {bounty.description}
             </p>
 
+            {bounty.requirements && (
+              <div className="mt-6 rounded-xl bg-slate-50 p-4">
+                <h2 className="font-bold">Requirements</h2>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  {bounty.requirements}
+                </p>
+              </div>
+            )}
+
             <div className="mt-8 border-t border-slate-200 pt-7">
               <h2 className="text-lg font-bold">Contribute to this bounty</h2>
-              <BountyActions
-                bountyId={bounty.id}
-                creatorAddress={bounty.creatorAddress}
-                deadline={bounty.deadline}
-              />
+              {creatorAddress && deadlineIso ? (
+                <BountyActions
+                  bountyId={bounty.id}
+                  creatorAddress={creatorAddress}
+                  deadline={deadlineIso}
+                />
+              ) : (
+                <p className="mt-3 text-sm text-amber-700">
+                  Creator wallet or deadline information is missing from the
+                  saved record. On-chain actions are unavailable for this
+                  listing until the record is corrected.
+                </p>
+              )}
             </div>
 
             <div className="mt-8 border-t border-slate-200 pt-7">
@@ -94,15 +124,19 @@ export default async function BountyDetailPage({
 
               <div className="mt-4 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white">
-                  {bounty.creator.slice(2, 4)}
+                  {creatorAddress
+                    ? creatorAddress.slice(2, 4).toUpperCase()
+                    : "AB"}
                 </div>
 
                 <div>
                   <p className="break-all text-sm font-semibold text-slate-900">
-                    {bounty.creator}
+                    {creatorAddress || bounty.creator}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Creator wallet on Arc
+                    {creatorAddress
+                      ? "Creator wallet on Arc"
+                      : "Creator wallet not available"}
                   </p>
                 </div>
               </div>
@@ -129,17 +163,21 @@ export default async function BountyDetailPage({
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-slate-500">Remaining escrow</span>
                 <span className="text-right font-semibold">
-                  {bounty.remainingReward}
+                  Verify on Arc Mainnet
                 </span>
               </div>
 
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-slate-500">Deadline</span>
                 <span className="text-right font-semibold">
-                  <DeadlineCountdown
-                    deadline={bounty.deadline}
-                    fallback={bounty.time}
-                  />
+                  {deadlineIso ? (
+                    <DeadlineCountdown
+                      deadline={deadlineIso}
+                      fallback={bounty.time}
+                    />
+                  ) : (
+                    "Not available"
+                  )}
                 </span>
               </div>
 
@@ -159,16 +197,16 @@ export default async function BountyDetailPage({
               </div>
             </div>
 
-
-
-            <a
-              href={`https://explorer.arc.io/address/${bounty.creator}`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-4 flex w-full items-center justify-center rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              View creator on Arc Explorer ↗
-            </a>
+            {creatorAddress && (
+              <a
+                href={`https://explorer.arc.io/address/${creatorAddress}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 flex w-full items-center justify-center rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                View creator on Arc Explorer ↗
+              </a>
+            )}
           </aside>
         </div>
       </div>

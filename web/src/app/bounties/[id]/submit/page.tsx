@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   createPublicClient,
   formatUnits,
+  parseUnits,
   http,
   type Address,
 } from "viem";
@@ -124,13 +125,56 @@ export default function SubmitBountyPage() {
       });
 
       setPageState("ready");
-    } catch (error) {
-      setPageError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load this bounty from Arc Mainnet.",
-      );
-      setPageState("error");
+    } catch (rpcError) {
+      try {
+        const response = await fetch(
+          `/api/bounties/${encodeURIComponent(String(bountyId))}`,
+          { cache: "no-store" }
+        );
+        const payload = await response.json();
+
+        if (!response.ok || !payload?.bounty) {
+          throw new Error("Saved bounty details are unavailable.");
+        }
+
+        const saved = payload.bounty;
+        const creator = String(saved.creator ?? "");
+        const title = String(saved.title ?? "").trim();
+        const description = String(saved.description ?? "");
+        const rewardText = String(saved.reward ?? "")
+          .replace(/\s*USDC\s*$/i, "")
+          .trim();
+        const deadlineMs = new Date(String(saved.deadline ?? "")).getTime();
+
+        if (
+          !/^0x[a-fA-F0-9]{40}$/.test(creator) ||
+          !title ||
+          !/^\d+(\.\d{1,6})?$/.test(rewardText) ||
+          !Number.isFinite(deadlineMs)
+        ) {
+          throw new Error("Saved bounty details are invalid.");
+        }
+
+        setBounty({
+          creator: creator as Address,
+          reward: parseUnits(rewardText, 6),
+          deadline: BigInt(Math.floor(deadlineMs / 1000)),
+          status: String(saved.status).toLowerCase() === "open" ? 0 : 1,
+          title,
+          description,
+        });
+        setPageError("");
+        setPageState("ready");
+      } catch (fallbackError) {
+        setPageError(
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : rpcError instanceof Error
+              ? rpcError.message
+              : "Unable to load this bounty."
+        );
+        setPageState("error");
+      }
     }
   }, [bountyId]);
 

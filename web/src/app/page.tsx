@@ -1,6 +1,6 @@
 import Link from "next/link";
 import BountyExplorer from "../components/BountyExplorer";
-import { getOnChainBounties } from "../data/bounties-chain";
+import { getBounties } from "../data/bounties-server";
 
 function ArrowRight() {
   return <span aria-hidden="true">→</span>;
@@ -186,7 +186,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
             Browse tasks and earn USDC
           </span>
         </div>
-        <BountyExplorer bounties={await getOnChainBounties()} search={(await searchParams).search ?? ""} category={(await searchParams).category ?? "All Tasks"} />
+        <BountyExplorer bounties={await getBounties()} search={(await searchParams).search ?? ""} category={(await searchParams).category ?? "All Tasks"} />
       </section>
 
       {/* Trust banner */}
