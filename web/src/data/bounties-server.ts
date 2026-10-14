@@ -21,8 +21,7 @@ function mapDatabaseBounty(row: Record<string, unknown>): StoredBounty {
     submissions: String(row.submissions ?? "0 submissions"),
     creator: String(row.creator ?? "ArcBounty"),
     winners: Number(row.winners ?? 1),
-    distribution:
-      row.distribution === "custom" ? "custom" : "equal",
+    distribution: row.distribution === "custom" ? "custom" : "equal",
     percentages: Array.isArray(row.percentages)
       ? row.percentages.map(Number)
       : [],
@@ -51,7 +50,37 @@ export async function getBounties(): Promise<StoredBounty[]> {
     mapDatabaseBounty(row as Record<string, unknown>)
   );
 
+  // Count real submissions from Supabase for every bounty.
+  const { data: submissionRows, error: submissionError } = await supabaseAdmin
+    .from("submissions")
+    .select("bounty_id");
+
+  if (submissionError) {
+    console.error(
+      "Unable to count submissions from Supabase:",
+      submissionError.message
+    );
+  } else {
+    const submissionCounts = new Map<string, number>();
+
+    for (const row of submissionRows ?? []) {
+      const bountyId = String(row.bounty_id);
+      submissionCounts.set(
+        bountyId,
+        (submissionCounts.get(bountyId) ?? 0) + 1
+      );
+    }
+
+    for (const bounty of storedBounties) {
+      const count = submissionCounts.get(bounty.id) ?? 0;
+      bounty.submissions = `${count} ${
+        count === 1 ? "submission" : "submissions"
+      }`;
+    }
+  }
+
   const storedIds = new Set(storedBounties.map((bounty) => bounty.id));
+
   const missingDemoBounties = demoBounties.filter(
     (bounty) => !storedIds.has(bounty.id)
   );

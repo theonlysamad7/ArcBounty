@@ -31,12 +31,14 @@ type Props = {
   bountyId: string;
   submissionId: string;
   onchainSubmissionId: string;
+  creatorAddress: string;
 };
 
 export default function ReviewSubmissionButtons({
   bountyId,
   submissionId,
   onchainSubmissionId,
+  creatorAddress,
 }: Props) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
@@ -44,7 +46,6 @@ export default function ReviewSubmissionButtons({
   const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
 
-  const [creator, setCreator] = useState<string>("");
   const [amounts, setAmounts] = useState<bigint[]>([]);
   const [paidTiers, setPaidTiers] = useState<boolean[]>([]);
   const [selectedTier, setSelectedTier] = useState("0");
@@ -52,6 +53,11 @@ export default function ReviewSubmissionButtons({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  const isCreator =
+    Boolean(address) &&
+    /^0x[a-fA-F0-9]{40}$/.test(creatorAddress) &&
+    address!.toLowerCase() === creatorAddress.toLowerCase();
 
   useEffect(() => {
     let cancelled = false;
@@ -63,21 +69,12 @@ export default function ReviewSubmissionButtons({
       try {
         const id = BigInt(bountyId);
 
-        const bounty: any = await publicClient.readContract({
-          address: ARC_BOUNTY_ADDRESS,
-          abi,
-          functionName: "bounties",
-          args: [id],
-        });
-
         const payoutAmounts: any = await publicClient.readContract({
           address: ARC_BOUNTY_ADDRESS,
           abi,
           functionName: "getPayoutAmounts",
           args: [id],
         });
-
-        const bountyCreator = String(bounty.creator ?? bounty[1]);
 
         const tiers = await Promise.all(
           (payoutAmounts as bigint[]).map(async (_, index) => {
@@ -98,7 +95,6 @@ export default function ReviewSubmissionButtons({
 
         if (cancelled) return;
 
-        setCreator(bountyCreator);
         setAmounts(payoutAmounts as bigint[]);
         setPaidTiers(tiers);
 
@@ -126,10 +122,7 @@ export default function ReviewSubmissionButtons({
     };
   }, [bountyId]);
 
-  const isCreator =
-    Boolean(address) &&
-    Boolean(creator) &&
-    address!.toLowerCase() === creator.toLowerCase();
+
 
   async function review(action: "approve" | "reject") {
     setError("");
@@ -281,7 +274,13 @@ export default function ReviewSubmissionButtons({
 
   return (
     <div className="w-full space-y-4">
-      {isConnected && !isCreator && creator && (
+      {error && (
+        <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
+      {isConnected && !isCreator && (
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
           Connect the wallet that created this bounty to review submissions.
         </p>

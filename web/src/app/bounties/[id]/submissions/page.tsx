@@ -240,6 +240,7 @@ export default async function BountySubmissionsPage({
                       onchainSubmissionId={
                         submission.onchainSubmissionId ?? ""
                       }
+                      creatorAddress={bounty.creator}
                     />
                   </div>
                 )}
