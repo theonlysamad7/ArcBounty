@@ -360,6 +360,9 @@ export default function ProfilePage() {
                           <Link href={`/bounties/${bounty.id}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100">
                             View Bounty
                           </Link>
+                          <Link href={`/bounties/${bounty.id}/submissions`} className="rounded-lg bg-[#1747c8] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#123aa5]">
+                            Review Submissions →
+                          </Link>
                         </div>
                       </div>
                     ))}

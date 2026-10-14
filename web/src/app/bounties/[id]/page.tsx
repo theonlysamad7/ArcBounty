@@ -186,6 +186,13 @@ export default async function BountyDetailPage({
                 <span className="font-semibold">{bounty.submissions}</span>
               </div>
 
+              <Link
+                href={`/bounties/${bounty.id}/submissions`}
+                className="flex w-full items-center justify-center rounded-xl bg-[#1747c8] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#123aa5]"
+              >
+                View Submissions →
+              </Link>
+
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-slate-500">Winner slots</span>
                 <span className="font-semibold">{bounty.winners}</span>
